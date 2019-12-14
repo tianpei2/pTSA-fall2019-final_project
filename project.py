@@ -71,6 +71,24 @@ def train_model(x_t, y_t, TIME_STEPS, BATCH_SIZE, NUM_OF_EPOCH, NUM_OF_NEURONS, 
 		ret.append(res)
 	return ret
 
+def predict_model(x_t, y_t, x_test, y_test, TIME_STEPS, BATCH_SIZE, NUM_OF_EPOCH, NUM_OF_NEURONS, DROPOUT_RATE, NUM_NEURONS_FC, LR, ACTIVATION):
+    x_train, y_train = trim_dataset(x_t, BATCH_SIZE), trim_dataset(y_t, BATCH_SIZE)
+    x_test, y_test = trim_dataset(x_test, BATCH_SIZE), trim_dataset(y_test, BATCH_SIZE)
+    lstm_model = Sequential()
+    # (batch_size, timesteps, data_dim)
+    features = x_train.shape[2]
+    lstm_model.add(LSTM(NUM_OF_NEURONS, batch_input_shape=(BATCH_SIZE, TIME_STEPS, features),
+                        dropout=0.0, recurrent_dropout=0.0, stateful=True,
+                        kernel_initializer='random_uniform'))
+    lstm_model.add(Dropout(DROPOUT_RATE))
+    lstm_model.add(Dense(NUM_NEURONS_FC, activation=ACTIVATION))
+    lstm_model.add(Dense(1,activation='sigmoid'))
+    optimizer = optimizers.RMSprop(lr=LR)
+    lstm_model.compile(loss='mean_squared_error', optimizer=optimizer)
+    lstm_model.fit(x_train, y_train, epochs = NUM_OF_EPOCH, verbose = 0, batch_size = BATCH_SIZE)
+    y_pred = lstm_model.predict(x_test, batch_size=BATCH_SIZE)
+    return y_test, y_pred
+
 
 df_brentOil = pd.read_csv('data.csv')
 def read_Data(df, TIME_STEPS, TRAIN_SIZE, BATCH_SIZE):
@@ -85,7 +103,7 @@ def read_Data(df, TIME_STEPS, TRAIN_SIZE, BATCH_SIZE):
 	x_t, y_t = build_timeseries(x_train, TIME_STEPS, 3)
 	x_test, y_test = build_timeseries(x_test, TIME_STEPS, 3)
 
-	return x_t, y_t, x_test, y_test
+	return x_t, y_t, x_test, y_test, min_max_scaler
 
 def format(data):
 	# res = np.zeros((len(data), len(data[0].history['loss'])))
@@ -100,25 +118,48 @@ def format(data):
 
 
 ####################### MAIN ########################
-TRAIN_SIZE = 504
-from matplotlib import pyplot as plt
-x_t, y_t, x_test, y_test = read_Data(df_brentOil, TIME_STEPS, TRAIN_SIZE, BATCH_SIZE)
-for ACTIVATION in ['relu', 'tanh', 'sigmoid']:
-	ret = train_model(x_t, y_t, TIME_STEPS, BATCH_SIZE, NUM_OF_EPOCH, NUM_OF_NEURONS, DROPOUT_RATE, NUM_NEURONS_FC, LR, ACTIVATION)
-	loss, val_loss = format(ret)
-	plt.figure()
-	plt.boxplot(loss)
-	plt.title('Training loss')
-	plt.ylabel('Loss')
-	plt.xlabel('Epoch')
-	plt.savefig('activation/Training_loss: {}'.format(ACTIVATION))
-	plt.close()
 
-	plt.figure()
-	plt.boxplot(val_loss)
-	plt.title('Validation loss')
-	plt.ylabel('Loss')
-	plt.xlabel('Epoch')
-	plt.savefig('activation/Validation_loss: {}'.format(ACTIVATION))
-	plt.close()
+##### validation #####
+# TRAIN_SIZE = 504
+# from matplotlib import pyplot as plt
+# x_t, y_t, x_test, y_test, min_max_scaler = read_Data(df_brentOil, TIME_STEPS, TRAIN_SIZE, BATCH_SIZE)
+# for ACTIVATION in ['relu', 'tanh', 'sigmoid']:
+# 	ret = train_model(x_t, y_t, TIME_STEPS, BATCH_SIZE, NUM_OF_EPOCH, NUM_OF_NEURONS, DROPOUT_RATE, NUM_NEURONS_FC, LR, ACTIVATION)
+# 	loss, val_loss = format(ret)
+# 	plt.figure()
+# 	plt.boxplot(loss)
+# 	plt.title('Training loss')
+# 	plt.ylabel('Loss')
+# 	plt.xlabel('Epoch')
+# 	plt.savefig('activation/Training_loss: {}'.format(ACTIVATION))
+# 	plt.close()
+
+# 	plt.figure()
+# 	plt.boxplot(val_loss)
+# 	plt.title('Validation loss')
+# 	plt.ylabel('Loss')
+# 	plt.xlabel('Epoch')
+# 	plt.savefig('activation/Validation_loss: {}'.format(ACTIVATION))
+# 	plt.close()
+
+
+###### prediction #######
+TIME_STEPS = 10
+DROPOUT_RATE = 0.2
+from matplotlib import pyplot as plt
+TRAIN_SIZE = 504
+x_t, y_t, x_test, y_test, min_max_scaler = read_Data(df_brentOil, TIME_STEPS, TRAIN_SIZE, BATCH_SIZE)
+y_test, y_pred = predict_model(x_t, y_t, x_test, y_test, TIME_STEPS, BATCH_SIZE, NUM_OF_EPOCH, NUM_OF_NEURONS, DROPOUT_RATE, NUM_NEURONS_FC, LR, ACTIVATION)
+y_test = y_test.reshape(-1, 1)
+# inverse normalization transformation
+y_test = (y_test * min_max_scaler.data_range_[3]) + min_max_scaler.data_min_[3]
+y_pred = (y_pred * min_max_scaler.data_range_[3]) + min_max_scaler.data_min_[3]
+plt.figure()
+plt.plot(y_test, label = 'actural close price')
+plt.plot(y_pred, label = 'predicted close price')
+plt.legend()
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.show()
+
 
